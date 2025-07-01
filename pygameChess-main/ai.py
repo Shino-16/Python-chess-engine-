@@ -65,11 +65,11 @@ KING_TABLE = np.array([
 
 piece_values = {
     'pawn': 100,
-    'knight': 320,
-    'bishop': 330,
+    'knight': 300,
+    'bishop': 350,
     'rook': 500,
     'queen': 900,
-    'king': 20000
+    'king': 2000000000  # King is invaluable, but we use a large number for evaluation
 }
 piece_tables = {
     'pawn': PAWN_TABLE,
@@ -80,7 +80,19 @@ piece_tables = {
     'king': KING_TABLE
 }
 
-def evaluate_board(white_pieces, white_locations, black_pieces, black_locations, move_generator=None, move_history=None):
+def is_king_in_check(own_pieces, own_locations, enemy_pieces, enemy_locations, check_options):
+    if 'king' not in own_pieces:
+        return False
+    king_idx = own_pieces.index('king')
+    king_pos = own_locations[king_idx]
+    # Get all possible enemy moves
+    all_options = check_options(enemy_pieces, enemy_locations, 'white' if own_pieces is not enemy_pieces else 'black')
+    enemy_moves = []
+    for piece_moves in all_options:
+        enemy_moves.extend(piece_moves)
+    return king_pos in enemy_moves
+
+def evaluate_board(white_pieces, white_locations, black_pieces, black_locations, check_options=None, move_history=None):
     score = 0
     for i, piece in enumerate(white_pieces):
         score += piece_values.get(piece, 0)
@@ -94,11 +106,11 @@ def evaluate_board(white_pieces, white_locations, black_pieces, black_locations,
             x, y = black_locations[i]
             # For black, use table as-is
             score -= piece_tables[piece][y][x]
-
-     # Mobility (number of moves)
-    if move_generator is not None:
-        white_mobility = sum(len(moves) for moves in move_generator(white_pieces, white_locations, 'white'))
-        black_mobility = sum(len(moves) for moves in move_generator(black_pieces, black_locations, 'black'))
+    
+    # Mobility (number of moves)
+    if check_options is not None:
+        white_mobility = sum(len(moves) for moves in check_options(white_pieces, white_locations, 'white'))
+        black_mobility = sum(len(moves) for moves in check_options(black_pieces, black_locations, 'black'))
         score += 5 * (white_mobility - black_mobility)  # weight can be tuned
 
     # Pawn structure: doubled pawns & passed pawns
@@ -109,6 +121,13 @@ def evaluate_board(white_pieces, white_locations, black_pieces, black_locations,
 
     # Threats: bonus for attacking higher-value piece
     score += threats_eval(white_pieces, white_locations, black_pieces, black_locations)
+
+    # Extra: penalize being in check, so the AI will prioritize escaping check
+    if check_options is not None:
+        if is_king_in_check(white_pieces, white_locations, black_pieces, black_locations, check_options):
+            score -= 50000  # Large penalty for being in check, adjust as needed
+        if is_king_in_check(black_pieces, black_locations, white_pieces, white_locations, check_options):
+            score += 50000
 
     return score
 
